@@ -1,2 +1,8 @@
 groq==1.4.0
 python-dotenv==1.0.1
+
+# --- Step 2: Voice ---
+openai-whisper==20250625      # speech-to-text, runs locally
+sounddevice==0.5.5            # microphone recording (PortAudio bundled on Windows)
+scipy==1.17.1                  # writes the recorded audio to a WAV file
+piper-tts==1.4.2                # text-to-speech, runs locally
