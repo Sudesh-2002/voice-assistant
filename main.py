@@ -1,22 +1,22 @@
 """
-STEP 1: Text command -> AI -> structured result.
+STEP 2: Voice in -> AI -> Voice out.
 
-This is the smallest possible version of the assistant's "brain."
-No voice yet, no router, no skills that actually do anything -
-just proving that we can take a typed command and get back a
-structured understanding of what the user wants.
+Same Groq "brain" as step 1, but now:
+  - You press Enter, speak your command, press Enter again to stop.
+  - Whisper transcribes what you said.
+  - Groq parses it into intent + parameters (same as before).
+  - Piper speaks a short reply back out loud.
 
-Run it, type things like:
-    set an alarm for 7 in the morning
-    open chrome
-    send an email
-
-...and see how the AI breaks it down into intent + parameters.
+Still no real actions yet (alarm doesn't actually get set) - that's
+step 4. This step is only about closing the voice loop end to end.
 """
 import json
 import os
 from dotenv import load_dotenv
 from groq import Groq
+
+from voice.stt import record_until_enter, transcribe
+from voice.tts import speak
 
 load_dotenv()
 
@@ -62,24 +62,45 @@ def ask_ai(user_text: str) -> dict:
         return {"intent": "unknown", "parameters": {}, "missing_info": None, "raw": raw}
 
 
+def build_spoken_reply(result: dict) -> str:
+    """Turns the structured AI result into a short sentence to speak."""
+    if result.get("missing_info"):
+        return result["missing_info"]
+
+    intent = result.get("intent", "unknown")
+    if intent == "unknown":
+        return "Sorry, I didn't understand that."
+
+    params = result.get("parameters", {})
+    details = ", ".join(f"{k}: {v}" for k, v in params.items())
+    return f"Got it. Intent is {intent.replace('_', ' ')}, with {details}."
+
+
 def main():
-    print("Voice Assistant - Step 1 (text only)")
-    print("Type a command, or 'quit' to exit.\n")
+    print("Voice Assistant - Step 2 (voice in, voice out)")
+    print("Press Enter to start speaking, then Enter again to stop. Ctrl+C to quit.\n")
 
     while True:
-        user_text = input("You: ").strip()
-        if user_text.lower() in ("quit", "exit"):
+        input("Press Enter to talk...")
+        try:
+            audio_path = record_until_enter()
+            user_text = transcribe(audio_path)
+        except KeyboardInterrupt:
             break
+
         if not user_text:
+            print("(didn't catch anything, try again)\n")
             continue
 
-        result = ask_ai(user_text)
+        print(f"You said: {user_text}")
 
+        result = ask_ai(user_text)
         print(f"Intent:      {result.get('intent')}")
         print(f"Parameters:  {result.get('parameters')}")
-        if result.get("missing_info"):
-            print(f"Assistant asks: {result['missing_info']}")
-        print()
+
+        reply = build_spoken_reply(result)
+        print(f"Assistant: {reply}\n")
+        speak(reply)
 
 
 if __name__ == "__main__":
