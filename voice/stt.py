@@ -40,14 +40,20 @@ def record_until_enter() -> str:
     with stream:
         input()  # blocks until Enter is pressed, while callback keeps recording
 
+    if not frames:
+        return None  # Enter was pressed before any audio came in
+
     audio = np.concatenate(frames, axis=0)
     temp_path = tempfile.mktemp(suffix=".wav")
     write_wav(temp_path, SAMPLE_RATE, audio)
     return temp_path
 
 
-def transcribe(audio_path: str) -> str:
-    """Converts a recorded WAV file into text."""
+def transcribe(audio_path: str | None) -> str:
+    """Converts a recorded WAV file into text. Returns empty string
+    if there's no audio to transcribe."""
+    if audio_path is None:
+        return ""
     model = _get_model()
     result = model.transcribe(audio_path, fp16=False)
     return result["text"].strip()
