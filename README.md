@@ -6,12 +6,21 @@ free, multi-tier AI router (Groq -> Gemini Flash -> DeepSeek).
 
 This project is being built in incremental steps.
 
-## Current status: Step 2 - Voice in, voice out
+## Current status: Step 3 - 3-tier AI router
 
-You press Enter, speak your command, press Enter again to stop. Whisper
-transcribes it, Groq parses it into intent + parameters (same as step 1),
-and Piper speaks a short reply back out loud. Still no real actions
-yet - the alarm intent doesn't actually set an alarm. That's step 4.
+Same voice loop as step 2 (press Enter, speak, press Enter again), but
+the single Groq call is now a router with automatic escalation:
+
+1. **Groq** (Llama 3.3 70B) tries first - fast and free, handles most commands.
+2. **Gemini** (3 Flash) is tried next if Groq fails or isn't confident -
+   smarter, still free, better at ambiguous or multi-step commands.
+3. **DeepSeek** (v4-flash) is the final fallback if both above fail -
+   very cheap but not fully free (needs a small balance top-up).
+
+The console prints which tier actually answered each command, useful
+for seeing the router in action.
+
+Still no real actions yet - that's step 4.
 
 ## Setup
 
@@ -20,44 +29,45 @@ yet - the alarm intent doesn't actually set an alarm. That's step 4.
    pip install -r requirements.txt
    ```
 
-2. Copy `.env.example` to `.env` and add your free Groq API key
-   (get one at https://console.groq.com/keys):
-   ```
-   GROQ_API_KEY=your_real_key_here
-   ```
+2. Copy `.env.example` to `.env` and add all three API keys:
+   - Groq (free): https://console.groq.com/keys
+   - Gemini (free): https://aistudio.google.com/apikey
+   - DeepSeek (small paid top-up required): https://platform.deepseek.com/api_keys
 
-3. **Download the Piper voice model** (one-time, ~63 MB). Run these in
-   PowerShell from your project folder:
-   ```
-   mkdir voice\models
-   cd voice\models
-   curl -L -o en_US-amy-medium.onnx "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/amy/medium/en_US-amy-medium.onnx"
-   curl -L -o en_US-amy-medium.onnx.json "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/amy/medium/en_US-amy-medium.onnx.json"
-   cd ..\..
-   ```
-   If a file downloads but is only a few KB, the download failed silently -
-   check your internet connection and try again. A real model file is ~63 MB.
+3. Make sure the Piper voice model is downloaded (see step 2 setup below
+   if you haven't done this yet).
 
 4. Run it:
    ```
    python main.py
    ```
 
-5. Press Enter, say something like "set an alarm for 7 in the morning",
-   press Enter again, and listen for the spoken reply.
+5. Press Enter, speak a command, press Enter again, and watch which
+   tier handles it.
 
 ### Notes
-- First run will download the Whisper "base" model automatically (~150 MB).
-- If you don't have a voice model downloaded yet, the assistant will still
-  work - it just prints what it *would* say instead of speaking it out loud.
-- If `sounddevice` complains about no input device, check Windows sound
-  settings to make sure a microphone is set as the default recording device.
+- If you only have a Groq key and leave Gemini/DeepSeek as placeholders,
+  the app will fail on startup - all three keys are currently required.
+  We can make tiers optional in a later step if you want to test with
+  just one provider.
+- ffmpeg must be installed and on your PATH for speech-to-text to work
+  (Whisper depends on it internally to decode audio).
+
+## Piper voice model setup (from step 2, if not already done)
+
+Run from your project folder in PowerShell:
+```powershell
+mkdir voice\models
+Invoke-WebRequest -Uri "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/amy/medium/en_US-amy-medium.onnx" -OutFile "voice\models\en_US-amy-medium.onnx"
+Invoke-WebRequest -Uri "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/amy/medium/en_US-amy-medium.onnx.json" -OutFile "voice\models\en_US-amy-medium.onnx.json"
+```
+
 
 
 ## Roadmap
 
 - [x] Step 1: Text command -> AI -> structured intent (Groq only)
 - [x] Step 2: Add voice input (speech-to-text) and voice output (text-to-speech)
-- [ ] Step 3: Add the full 3-tier AI router (Groq -> Gemini -> DeepSeek) with escalation
+- [x] Step 3: Add the full 3-tier AI router (Groq -> Gemini -> DeepSeek) with escalation
 - [ ] Step 4: Add real skills that execute actions (set alarm, open app, send email, etc.)
 - [ ] Step 5: Run as a background service with always-listening wake word
