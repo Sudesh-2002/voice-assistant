@@ -1,65 +1,43 @@
 """
-STEP 2: Voice in -> AI -> Voice out.
+STEP 3: 3-tier AI router (Groq -> Gemini -> DeepSeek).
 
-Same Groq "brain" as step 1, but now:
-  - You press Enter, speak your command, press Enter again to stop.
-  - Whisper transcribes what you said.
-  - Groq parses it into intent + parameters (same as before).
-  - Piper speaks a short reply back out loud.
+Same voice loop as step 2, but the single Groq call is replaced with
+a router that tries Groq first, and automatically escalates to Gemini
+then DeepSeek if a tier fails or isn't confident in its answer.
 
 Still no real actions yet (alarm doesn't actually get set) - that's
-step 4. This step is only about closing the voice loop end to end.
+step 4.
 """
-import json
 import os
 from dotenv import load_dotenv
-from groq import Groq
 
 from voice.stt import record_until_enter, transcribe
 from voice.tts import speak
+from router.tiers import route_command
 
 load_dotenv()
 
-API_KEY = os.getenv("GROQ_API_KEY")
-if not API_KEY or "your_" in API_KEY:
-    raise RuntimeError(
-        "GROQ_API_KEY is missing. Copy .env.example to .env and paste your real key in."
-    )
 
-client = Groq(api_key=API_KEY)
-
-SYSTEM_PROMPT = """You are the brain of a voice assistant. Given a user's
-command, extract:
-1. "intent" - one of: set_alarm, open_app, send_email, get_directions,
-   schedule_event, unknown
-2. "parameters" - a dict of relevant details already given (e.g. time, app name)
-3. "missing_info" - if something REQUIRED is missing, a short question to
-   ask the user. Otherwise null.
-
-Respond ONLY with valid JSON. No markdown, no explanation. Example:
-{"intent": "set_alarm", "parameters": {"time": "07:00"}, "missing_info": null}
-"""
+def _require(key: str) -> str:
+    value = os.getenv(key)
+    if not value or "your_" in value:
+        raise RuntimeError(
+            f"Missing or placeholder value for '{key}' in your .env file."
+        )
+    return value
 
 
-def ask_ai(user_text: str) -> dict:
-    """Sends the command to Groq and returns the parsed JSON result."""
-    response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_text},
-        ],
-        temperature=0,
-    )
-    raw = response.choices[0].message.content.strip()
+API_KEYS = {
+    "groq": _require("GROQ_API_KEY"),
+    "gemini": _require("GEMINI_API_KEY"),
+    "deepseek": _require("DEEPSEEK_API_KEY"),
+}
 
-    # Defensive cleanup in case the model wraps output in ```json fences
-    raw = raw.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        return {"intent": "unknown", "parameters": {}, "missing_info": None, "raw": raw}
+MODELS = {
+    "groq": os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
+    "gemini": os.getenv("GEMINI_MODEL", "gemini-3-flash"),
+    "deepseek": os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash"),
+}
 
 
 def build_spoken_reply(result: dict) -> str:
@@ -77,7 +55,7 @@ def build_spoken_reply(result: dict) -> str:
 
 
 def main():
-    print("Voice Assistant - Step 2 (voice in, voice out)")
+    print("Voice Assistant - Step 3 (3-tier router: Groq -> Gemini -> DeepSeek)")
     print("Press Enter to start speaking, then Enter again to stop. Ctrl+C to quit.\n")
 
     while True:
@@ -94,7 +72,8 @@ def main():
 
         print(f"You said: {user_text}")
 
-        result = ask_ai(user_text)
+        result = route_command(user_text, API_KEYS, MODELS)
+        print(f"Handled by:  {result.get('_tier')}")
         print(f"Intent:      {result.get('intent')}")
         print(f"Parameters:  {result.get('parameters')}")
 
