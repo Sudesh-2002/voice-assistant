@@ -6,3 +6,7 @@ openai-whisper==20250625      # speech-to-text, runs locally
 sounddevice==0.5.5            # microphone recording (PortAudio bundled on Windows)
 scipy==1.17.1                  # writes the recorded audio to a WAV file
 piper-tts==1.4.2                # text-to-speech, runs locally
+
+# --- Step 3: 3-tier AI router ---
+google-genai==2.9.0             # Tier 2: Gemini Flash
+openai==2.43.0                   # Tier 3: DeepSeek (OpenAI-compatible API)
