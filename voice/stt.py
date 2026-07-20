@@ -22,6 +22,33 @@ def _get_model():
     return _model
 
 
+def record_until_enter() -> str:
+    """
+    Push-to-talk recording: starts recording immediately, and stops
+    the moment the user presses Enter again. Returns path to a WAV file.
+    """
+    print("Recording... press Enter when you're done speaking.")
+
+    frames = []
+
+    def callback(indata, frame_count, time_info, status):
+        frames.append(indata.copy())
+
+    stream = sd.InputStream(
+        samplerate=SAMPLE_RATE, channels=1, dtype=np.int16, callback=callback
+    )
+    with stream:
+        input()  # blocks until Enter is pressed, while callback keeps recording
+
+    if not frames:
+        return None  # Enter was pressed before any audio came in
+
+    audio = np.concatenate(frames, axis=0)
+    temp_path = tempfile.mktemp(suffix=".wav")
+    write_wav(temp_path, SAMPLE_RATE, audio)
+    return temp_path
+
+
 def transcribe(audio_path: str | None) -> str:
     """Converts a recorded WAV file into text. Returns empty string
     if there's no audio to transcribe."""
