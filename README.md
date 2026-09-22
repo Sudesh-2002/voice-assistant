@@ -61,13 +61,3 @@ mkdir voice\models
 Invoke-WebRequest -Uri "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/amy/medium/en_US-amy-medium.onnx" -OutFile "voice\models\en_US-amy-medium.onnx"
 Invoke-WebRequest -Uri "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/amy/medium/en_US-amy-medium.onnx.json" -OutFile "voice\models\en_US-amy-medium.onnx.json"
 ```
-
-
-
-## Roadmap
-
-- [x] Step 1: Text command -> AI -> structured intent (Groq only)
-- [x] Step 2: Add voice input (speech-to-text) and voice output (text-to-speech)
-- [x] Step 3: Add the full 3-tier AI router (Groq -> Gemini -> DeepSeek) with escalation
-- [ ] Step 4: Add real skills that execute actions (set alarm, open app, send email, etc.)
-- [ ] Step 5: Run as a background service with always-listening wake word
