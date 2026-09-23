@@ -1,10 +1,6 @@
 import os
+import threading
 from dotenv import load_dotenv
-
-from voice.stt import record_until_enter, transcribe
-from voice.tts import speak
-from router.tiers import route_command
-from skills.registry import dispatch
 
 load_dotenv()
 
@@ -31,44 +27,27 @@ MODELS = {
 }
 
 
-def handle_result(result: dict) -> str:
-
-    if result.get("missing_info"):
-        return result["missing_info"]
-
-    intent = result.get("intent", "unknown")
-    if intent == "unknown":
-        return "Sorry, I didn't understand that. Could you try again?"
-
-    return dispatch(intent, result.get("parameters", {}))
-
-
 def main():
-    print("Voice Assistant - Step 4 (real skills)")
-    print("Press Enter to start speaking, then Enter again to stop. Ctrl+C to quit.\n")
+    from atlas import listen_loop
+    from tray import run_tray
 
-    while True:
-        input("Press Enter to talk...")
-        try:
-            audio_path = record_until_enter()
-            user_text = transcribe(audio_path)
-        except KeyboardInterrupt:
-            break
+    stop_event = threading.Event()
 
-        if not user_text:
-            print("(didn't catch anything, try again)\n")
-            continue
+    listener_thread = threading.Thread(
+        target=listen_loop,
+        args=(API_KEYS, MODELS, stop_event),
+        daemon=True,
+        name="AtlasListener",
+    )
+    listener_thread.start()
 
-        print(f"You said:    {user_text}")
+    print("[Atlas] Starting. Look for the tray icon in the bottom-right corner.")
+    print("[Atlas] Right-click the tray icon and select Quit to stop.\n")
 
-        result = route_command(user_text, API_KEYS, MODELS)
-        print(f"Handled by:  {result.get('_tier')}")
-        print(f"Intent:      {result.get('intent')}")
-        print(f"Parameters:  {result.get('parameters')}")
+    run_tray(stop_event)
 
-        reply = handle_result(result)
-        print(f"Assistant:   {reply}\n")
-        speak(reply)
+    listener_thread.join(timeout=3)
+    print("[Atlas] Goodbye.")
 
 
 if __name__ == "__main__":
