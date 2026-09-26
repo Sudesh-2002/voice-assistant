@@ -1,4 +1,4 @@
-# Atlas — Personal Voice Assistant
+# Personal Voice Assistant
 
 A custom AI-powered voice assistant for Windows that listens for your
 voice, understands what you want, and actually does it. Built entirely
