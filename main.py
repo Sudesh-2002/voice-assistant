@@ -30,6 +30,7 @@ MODELS = {
 def main():
     from atlas import listen_loop
     from tray import run_tray
+    from dashboard import run_dashboard
 
     stop_event = threading.Event()
 
@@ -41,11 +42,17 @@ def main():
     )
     listener_thread.start()
 
-    print("[Atlas] Starting. Look for the tray icon in the bottom-right corner.")
-    print("[Atlas] Right-click the tray icon and select Quit to stop.\n")
+    tray_thread = threading.Thread(
+        target=run_tray,
+        args=(stop_event,),
+        daemon=True,
+        name="AtlasTray",
+    )
+    tray_thread.start()
 
-    run_tray(stop_event)
+    run_dashboard()
 
+    stop_event.set()
     listener_thread.join(timeout=3)
     print("[Atlas] Goodbye.")
 
