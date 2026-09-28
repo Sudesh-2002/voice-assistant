@@ -165,8 +165,3 @@ voice-assistant/
 
 ---
 
-## Known issues
-
-- **ffmpeg PATH issue** — after `winget install ffmpeg`, you must close
-  and reopen PowerShell (or reboot) before Whisper can find it.
-  Run `ffmpeg -version` to confirm it's on your PATH before running Atlas.
