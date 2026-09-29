@@ -1,7 +1,5 @@
-# Environment variables - NEVER commit your real .env, it has API keys
 .env
 
-# Python
 __pycache__/
 *.pyc
 *.pyo
@@ -9,10 +7,11 @@ __pycache__/
 venv/
 env/
 
-# Editor/OS junk
 .vscode/
 .idea/
 .DS_Store
 Thumbs.db
 
 voice/models/
+
+memory.json
