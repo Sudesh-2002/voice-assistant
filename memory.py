@@ -3,7 +3,7 @@ import os
 from datetime import datetime
 
 MEMORY_FILE = os.path.join(os.path.dirname(__file__), "memory.json")
-MAX_HISTORY = 10
+MAX_HISTORY = 10  
 
 
 def _empty() -> dict:
@@ -52,7 +52,6 @@ def set_preference(memory: dict, key: str, value: str):
 
 
 def build_memory_context(memory: dict) -> str:
-
     parts = []
 
     if memory["preferences"]:
@@ -62,7 +61,7 @@ def build_memory_context(memory: dict) -> str:
         parts.append(f"User preferences (use these to fill in missing info):\n{prefs}")
 
     if memory["history"]:
-        recent = memory["history"][-6:]   # last 3 exchanges only, to keep prompt short
+        recent = memory["history"][-6:]
         hist = "\n".join(
             f"  {e['role'].capitalize()} ({e['time']}): {e['content']}"
             for e in recent

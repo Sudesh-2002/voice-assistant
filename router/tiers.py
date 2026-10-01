@@ -1,15 +1,3 @@
-"""
-The 3-tier AI router.
-
-Tier 1: Groq (Llama 3.3 70B)     -> fast, free, handles most commands
-Tier 2: Gemini (3 Flash)         -> smarter, free, for ambiguous/multi-step
-Tier 3: DeepSeek (v4-flash)      -> cheap reasoning fallback if tier 2 is down
-                                     or its free daily quota is used up
-
-How escalation works: we try one tier. If it errors out (network issue,
-quota exceeded, bad key) OR comes back with low confidence, we
-automatically try the next tier instead of giving up.
-"""
 import json
 from groq import Groq
 from google import genai
@@ -31,7 +19,6 @@ Respond ONLY with valid JSON. No markdown, no explanation. Example:
 {"intent": "set_alarm", "parameters": {"time": "07:00"}, "missing_info": null, "confidence": 0.95}
 """
 
-# If a tier returns confidence below this, we don't trust it - escalate instead.
 CONFIDENCE_THRESHOLD = 0.6
 
 
@@ -72,8 +59,6 @@ def _call_gemini(transcript: str, api_key: str, model: str) -> dict:
 
 
 def _call_deepseek(transcript: str, api_key: str, model: str) -> dict:
-    # DeepSeek's API is OpenAI-compatible, so we reuse the OpenAI SDK
-    # pointed at DeepSeek's base URL instead of OpenAI's.
     client = OpenAI(api_key=api_key, base_url="https://api.deepseek.com")
     response = client.chat.completions.create(
         model=model,
@@ -117,8 +102,6 @@ def route_command(transcript: str, keys: dict, models: dict) -> dict:
             print(f"(escalating: {last_error})")
             continue
 
-    # Every tier failed or was unsure - return a clear "unknown" instead
-    # of crashing the whole assistant.
     return {
         "intent": "unknown",
         "parameters": {},
