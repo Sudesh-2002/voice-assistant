@@ -6,34 +6,34 @@ A distributed banking ledger built in Spring Boot to demonstrate production-grad
 
 ```
                     ┌─────────────────┐
-                    │   REST Clients   │
-                    └────────┬─────────┘
+                    │   REST Clients  │
+                    └────────┬────────┘
                              │
               ┌──────────────┴──────────────┐
-              ▼                              ▼
-     ┌─────────────────┐           ┌──────────────────┐
-     │   COMMAND SIDE    │           │    QUERY SIDE     │
-     │  (writes)          │           │   (reads)          │
-     │                     │           │                    │
-     │  Account Aggregate  │           │  Projections:      │
+              ▼                             ▼
+     ┌─────────────────────┐           ┌─────────────────────┐
+     │   COMMAND SIDE      │           │    QUERY SIDE       │
+     │  (writes)           │           │   (reads)           │
+     │                     │           │                     │
+     │  Account Aggregate  │           │  Projections:       │
      │  - open/deposit/    │           │  - account_summary  │
      │    withdraw         │           │  - transaction_hist │
-     │  - business rules   │           │                    │
-     └─────────┬───────────┘           └────────▲───────────┘
-               │                                  │
-               ▼                                  │
-     ┌─────────────────────┐          ┌──────────┴──────────┐
-     │   EVENT STORE (PG)    │          │  Kafka Consumer       │
-     │   append-only,         │          │  (idempotent           │
-     │   optimistic locking   │          │   projector)           │
-     └─────────┬───────────────┘          └──────────▲──────────┘
-               │                                        │
-               ▼                                        │
-     ┌─────────────────────┐                  ┌────────┴────────┐
-     │  Transactional Outbox │─────publishes──▶│  Kafka Topic     │
-     │  (same DB transaction │   (scheduled     │  account-events  │
-     │   as event write)      │    poller)       └─────────────────┘
-     └─────────────────────┘
+     │  - business rules   │           │                     │
+     └─────────┬───────────┘           └────────────▲────────┘
+               │                                    │
+               ▼                                    │
+     ┌────────────────────────┐          ┌──────────┴──────────┐
+     │   EVENT STORE (PG)     │          │  Kafka Consumer     │
+     │   append-only,         │          │  (idempotent        │
+     │   optimistic locking   │          │   projector)        │
+     └─────────┬──────────────┘          └──────────▲──────────┘
+               │                                    │
+               ▼                                    │
+     ┌───────────────────────┐                  ┌───┴────────────┐
+     │  Transactional Outbox │─────publishes──▶│  Kafka Topic    │
+     │  (same DB transaction │   (scheduled     │  account-events │
+     │   as event write)     │    poller)       └─────────────────┘
+     └───────────────────────┘
 ```
 
 **Core principle:** the event store is the only source of truth. Every read model is disposable and can be rebuilt from scratch by replaying the event log — proven by a dedicated `/api/admin/projections/rebuild` endpoint.
