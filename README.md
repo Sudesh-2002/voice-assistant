@@ -56,13 +56,13 @@ Most CRUD portfolio projects update a row and call it done. This one deliberatel
 ## Tech Stack
 
 - **Java 17**, **Spring Boot 3**
-- **PostgreSQL** — event store, snapshots, outbox, read models (Flyway-managed schema)
-- **Apache Kafka** (KRaft mode) — async event propagation between write and read sides
-- **Resilience4j** — circuit breaker for Kafka publishing
-- **Micrometer + Prometheus + Grafana** — metrics and dashboards (command throughput, outbox backlog, dead-letter counts)
-- **springdoc-openapi** — live Swagger UI
-- **Docker Compose** — Postgres, Kafka, Kafka UI, Prometheus, Grafana, and the app itself
-- **JUnit 5, AssertJ, Awaitility** — unit and integration tests, including replay-correctness and eventual-consistency assertions
+- **PostgreSQL** - event store, snapshots, outbox, read models (Flyway-managed schema)
+- **Apache Kafka** (KRaft mode) - async event propagation between write and read sides
+- **Resilience4j** - circuit breaker for Kafka publishing
+- **Micrometer + Prometheus + Grafana** - metrics and dashboards (command throughput, outbox backlog, dead-letter counts)
+- **springdoc-openapi** - live Swagger UI
+- **Docker Compose** - Postgres, Kafka, Kafka UI, Prometheus, Grafana, and the app itself
+- **JUnit 5, AssertJ, Awaitility** - unit and integration tests, including replay-correctness and eventual-consistency assertions
 
 ## Getting Started
 
@@ -120,8 +120,8 @@ curl -X POST http://localhost:8080/api/admin/projections/rebuild
 Metrics exposed at `/actuator/prometheus`, including:
 
 - `ledger_commands_processed_total` / `ledger_commands_rejected_total`
-- `ledger_command_latency` — end-to-end command processing time
-- `ledger_outbox_backlog` — unpublished outbox rows (the key signal for "is the read side keeping up")
+- `ledger_command_latency` - end-to-end command processing time
+- `ledger_outbox_backlog` - unpublished outbox rows (the key signal for "is the read side keeping up")
 - `ledger_outbox_published_total` / `ledger_outbox_dead_lettered_total`
 
 Import these into Grafana against the Prometheus data source (`http://prometheus:9090`) for live dashboards.
