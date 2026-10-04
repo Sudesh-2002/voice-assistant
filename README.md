@@ -131,10 +131,10 @@ Import these into Grafana against the Prometheus data source (`http://prometheus
 ```
 src/main/java/com/sudesh/ledger/
 ├── command/           # write side: aggregate, commands, events, command service, REST controllers
-├── query/              # read side: projections, projector, rebuild service, REST controllers
-├── eventstore/         # append-only event store, snapshots, transactional outbox
-├── config/              # Kafka, Resilience4j, OpenAPI, scheduling config
-└── shared/              # cross-cutting: error handling, idempotency, metrics, envelopes
+├── query/             # read side: projections, projector, rebuild service, REST controllers
+├── eventstore/        # append-only event store, snapshots, transactional outbox
+├── config/            # Kafka, Resilience4j, OpenAPI, scheduling config
+└── shared/            # cross-cutting: error handling, idempotency, metrics, envelopes
 ```
 
 ## Testing
@@ -159,5 +159,3 @@ Covers:
 
 
 ---
-
-Built as a portfolio project to demonstrate CQRS, Event Sourcing, and distributed-systems patterns in a realistic domain (banking) rather than a toy example.
