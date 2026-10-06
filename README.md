@@ -1,161 +1,205 @@
-# Ledger — CQRS + Event Sourcing Banking System
+# Personal Voice Assistant
 
-A distributed banking ledger built in Spring Boot to demonstrate production-grade **CQRS** and **Event Sourcing** patterns: an append-only event store as the single source of truth, Kafka-driven eventually-consistent read models, snapshotting, a transactional outbox, idempotent APIs, and circuit-breaker-protected resilience.
-
-## Architecture
-
-```
-                    ┌─────────────────┐
-                    │   REST Clients  │
-                    └────────┬────────┘
-                             │
-              ┌──────────────┴──────────────┐
-              ▼                             ▼
-     ┌─────────────────────┐           ┌─────────────────────┐
-     │   COMMAND SIDE      │           │    QUERY SIDE       │
-     │  (writes)           │           │   (reads)           │
-     │                     │           │                     │
-     │  Account Aggregate  │           │  Projections:       │
-     │  - open/deposit/    │           │  - account_summary  │
-     │    withdraw         │           │  - transaction_hist │
-     │  - business rules   │           │                     │
-     └─────────┬───────────┘           └────────────▲────────┘
-               │                                    │
-               ▼                                    │
-     ┌────────────────────────┐          ┌──────────┴──────────┐
-     │   EVENT STORE (PG)     │          │  Kafka Consumer     │
-     │   append-only,         │          │  (idempotent        │
-     │   optimistic locking   │          │   projector)        │
-     └─────────┬──────────────┘          └──────────▲──────────┘
-               │                                    │
-               ▼                                    │
-     ┌───────────────────────┐                  ┌───┴────────────┐
-     │  Transactional Outbox │─────publishes──▶│  Kafka Topic    │
-     │  (same DB transaction │   (scheduled     │  account-events │
-     │   as event write)     │    poller)       └─────────────────┘
-     └───────────────────────┘
-```
-
-**Core principle:** the event store is the only source of truth. Every read model is disposable and can be rebuilt from scratch by replaying the event log — proven by a dedicated `/api/admin/projections/rebuild` endpoint.
-
-## Why this project is hard
-
-Most CRUD portfolio projects update a row and call it done. This one deliberately confronts the problems that make distributed systems hard in practice:
-
-| Problem | Solution implemented |
-|---|---|
-| Two writers racing to update the same aggregate | Optimistic concurrency via a DB unique constraint on `(aggregate_id, sequence_number)` |
-| Rebuilding state without a "current state" table | Event replay — aggregates are reconstructed by folding their full event history |
-| Replay getting slow as history grows | Snapshotting every N events; load path becomes "latest snapshot + events since" |
-| Read model falling out of sync with writes | Kafka-based async projection, idempotent by design (version-guarded upserts) |
-| Losing an event between DB commit and Kafka publish | Transactional outbox pattern — event store write and outbox write are one atomic transaction |
-| A client retrying a timed-out request | Idempotency-Key header, enforced via a DB-backed reservation table |
-| Kafka going down and cascading failures | Resilience4j circuit breaker around the outbox publisher |
-| A message that keeps failing to project | Dead-letter handling on both the outbox (publish side) and the Kafka consumer (projection side) |
-
-## Tech Stack
-
-- **Java 17**, **Spring Boot 3**
-- **PostgreSQL** - event store, snapshots, outbox, read models (Flyway-managed schema)
-- **Apache Kafka** (KRaft mode) - async event propagation between write and read sides
-- **Resilience4j** - circuit breaker for Kafka publishing
-- **Micrometer + Prometheus + Grafana** - metrics and dashboards (command throughput, outbox backlog, dead-letter counts)
-- **springdoc-openapi** - live Swagger UI
-- **Docker Compose** - Postgres, Kafka, Kafka UI, Prometheus, Grafana, and the app itself
-- **JUnit 5, AssertJ, Awaitility** - unit and integration tests, including replay-correctness and eventual-consistency assertions
-
-## Getting Started
-
-### Prerequisites
-- Java 17+
-- Maven
-- Docker Desktop
-
-### Run locally
-
-```bash
-docker compose up -d --build
-```
-
-This brings up Postgres, Kafka, Kafka UI (`localhost:8081`), Prometheus (`localhost:9090`), Grafana (`localhost:3000`, admin/admin), and the app itself (`localhost:8080`).
-
-Or, to run the app outside Docker against the containerized infra:
-
-```bash
-docker compose up -d postgres kafka
-mvn spring-boot:run
-```
-
-### API docs
-
-Swagger UI: `http://localhost:8080/swagger-ui.html`
-
-### Example flow
-
-```bash
-# open an account (idempotency key required on all command endpoints)
-curl -X POST http://localhost:8080/api/accounts \
-  -H "Idempotency-Key: $(uuidgen)" \
-  -H "Content-Type: application/json" \
-  -d '{"accountId":"acc-1","ownerName":"Sudesh","openingBalance":100.00}'
-
-# deposit
-curl -X POST http://localhost:8080/api/accounts/acc-1/deposit \
-  -H "Idempotency-Key: $(uuidgen)" \
-  -H "Content-Type: application/json" \
-  -d '{"amount":50.00,"reference":"salary"}'
-
-# read the projection (eventually consistent — usually near-instant locally)
-curl http://localhost:8080/api/accounts/acc-1/summary
-
-# full transaction history
-curl http://localhost:8080/api/accounts/acc-1/transactions
-
-# rebuild every read model from the event store, from scratch
-curl -X POST http://localhost:8080/api/admin/projections/rebuild
-```
-
-## Observability
-
-Metrics exposed at `/actuator/prometheus`, including:
-
-- `ledger_commands_processed_total` / `ledger_commands_rejected_total`
-- `ledger_command_latency` - end-to-end command processing time
-- `ledger_outbox_backlog` - unpublished outbox rows (the key signal for "is the read side keeping up")
-- `ledger_outbox_published_total` / `ledger_outbox_dead_lettered_total`
-
-Import these into Grafana against the Prometheus data source (`http://prometheus:9090`) for live dashboards.
-
-## Project Structure
-
-```
-src/main/java/com/sudesh/ledger/
-├── command/           # write side: aggregate, commands, events, command service, REST controllers
-├── query/             # read side: projections, projector, rebuild service, REST controllers
-├── eventstore/        # append-only event store, snapshots, transactional outbox
-├── config/            # Kafka, Resilience4j, OpenAPI, scheduling config
-└── shared/            # cross-cutting: error handling, idempotency, metrics, envelopes
-```
-
-## Testing
-
-```bash
-mvn test
-```
-
-Covers:
-- Pure domain logic (aggregate command handling, no Spring context)
-- Event store append + optimistic concurrency rejection
-- Snapshot-plus-replay producing identical state to full replay
-- Projection eventual consistency and full rebuild-from-event-store correctness
-- Idempotency key deduplication under retry
-- Global error handling → correct HTTP status mapping
-
-## Known Trade-offs / Next Steps
-
-- Currently a modular monolith (command and query sides share a deployable) — a natural extension is splitting them into two genuinely separate services communicating only via Kafka.
-- No `Transfer` command spanning two aggregates yet — adding one would introduce the Saga pattern for cross-aggregate consistency.
-- Local dev integration tests depend on `docker compose up` being run first; migrating to Testcontainers would make `mvn test` fully self-contained.
-
+A custom AI-powered voice assistant for Windows that listens for your
+voice, understands what you want, and actually does it. Built entirely
+with free tools and open-source models.
 
 ---
+
+## How it works
+
+Say **"Hey Atlas"** → hear a chime → say your command → Atlas does it
+and speaks the result back. Everything runs locally on your machine
+except the AI inference calls (Groq / Gemini / DeepSeek).
+
+```
+Your voice
+   │
+   ▼
+Whisper (local STT)
+   │
+   ▼
+Memory context injected ──► preferences + recent history
+   │
+   ▼
+3-tier AI router ──► Groq (fast, free)
+   │                 Gemini Flash (smarter, free)
+   │                 DeepSeek (cheap fallback)
+   ▼
+Skill dispatcher ──► set_alarm / remember_preference / open_app / ...
+   │
+   ▼
+Piper (local TTS) → spoken reply + saved to memory.json
+   │
+   ▼
+Dashboard (live status + history)
+```
+
+---
+
+## Features
+
+- **Wake word** — always listening for "Hey Atlas" in the background
+- **3-tier AI router** — automatically escalates to a smarter model if
+  the first one isn't confident enough
+- **Persistent memory** — remembers your preferences and recent
+  conversation history across restarts (saved to `memory.json`)
+- **Real skills** — alarm via Windows Task Scheduler with toast notification
+- **System tray** — runs silently, right-click → Quit to stop
+- **Dashboard** — live status badge + scrollable command history
+- **Fully local voice** — Whisper STT + Piper TTS, no cloud voice APIs
+
+---
+
+## Setup
+
+### 1. Clone and install dependencies
+
+```powershell
+git clone https://github.com/Sudesh-2002/voice-assistant.git
+cd voice-assistant
+pip install -r requirements.txt
+```
+
+### 2. Get API keys (all free or near-free)
+
+| Provider | Where to get it | Cost |
+|----------|----------------|------|
+| Groq | https://console.groq.com/keys | Free |
+| Gemini | https://aistudio.google.com/apikey | Free |
+| DeepSeek | https://platform.deepseek.com/api_keys | Small top-up needed |
+
+### 3. Create your .env file
+
+```powershell
+copy .env.example .env
+```
+
+Open `.env` and fill in your real keys:
+
+```
+GROQ_API_KEY=your_groq_key_here
+GEMINI_API_KEY=your_gemini_key_here
+DEEPSEEK_API_KEY=your_deepseek_key_here
+```
+
+### 4. Install ffmpeg (required for Whisper)
+
+```powershell
+winget install ffmpeg
+```
+
+Close and reopen PowerShell after installing, then verify:
+
+```powershell
+ffmpeg -version
+```
+
+### 5. Download the Piper voice model (one-time, ~63 MB)
+
+```powershell
+mkdir voice\models
+Invoke-WebRequest -Uri "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/amy/medium/en_US-amy-medium.onnx" -OutFile "voice\models\en_US-amy-medium.onnx"
+Invoke-WebRequest -Uri "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0/en/en_US/amy/medium/en_US-amy-medium.onnx.json" -OutFile "voice\models\en_US-amy-medium.onnx.json"
+```
+
+Verify the `.onnx` file is ~63 MB:
+
+```powershell
+dir voice\models
+```
+
+### 6. Run
+
+```powershell
+python main.py
+```
+
+The dashboard window opens. A blue "A" icon appears in your system tray.
+Wait for `[Atlas] Ready. Listening for 'Hey Atlas'...` in the terminal.
+
+---
+
+## Usage
+
+### Voice commands
+
+| Say | What happens |
+|-----|-------------|
+| "Hey Atlas" | Chime plays, Atlas says "Yes?" |
+| "Set an alarm for 7 AM" | Windows toast notification at 7:00 AM |
+| "Set my usual alarm" | Uses remembered preference to set the time |
+| "Hey Atlas, remember my usual alarm is 7 AM" | Saves to memory permanently |
+| "Hey Atlas, remember mom's number is +94771234567" | Saves to memory permanently |
+| "Cancel that" | AI uses recent history to resolve what "that" means |
+
+### Memory commands
+
+Atlas learns and remembers things you tell it. Preferences survive
+restarts and are used automatically to fill in missing details.
+
+```
+"Hey Atlas, remember my usual alarm is 7 AM"
+→ Saved. Next time say "set my usual alarm" and Atlas knows the time.
+
+"Hey Atlas, remember mom's number is +94771234567"
+→ Saved. Used automatically when email/call skills are added.
+```
+
+Memory is stored locally in `memory.json` in your project folder.
+It is never uploaded anywhere and is excluded from git.
+
+### Stopping Atlas
+
+Right-click the system tray icon → **Quit**, or close the dashboard window.
+
+---
+
+## Project structure
+
+```
+voice-assistant/
+├── main.py           Entry point — launches dashboard, tray, listener
+├── atlas.py          Always-listening wake word loop + memory integration
+├── memory.py         Load, save, and query persistent memory (memory.json)
+├── dashboard.py      CustomTkinter GUI (live status + history)
+├── state.py          Shared state between listener and dashboard
+├── tray.py           System tray icon
+├── router/
+│   └── tiers.py      3-tier AI router (Groq → Gemini → DeepSeek)
+├── skills/
+│   ├── base.py       Skill interface
+│   ├── alarm.py      Set alarm via Windows Task Scheduler
+│   └── registry.py   Maps intent names to skill instances
+├── voice/
+│   ├── stt.py        Speech-to-text (local Whisper)
+│   ├── tts.py        Text-to-speech (local Piper)
+│   └── models/       Piper voice model files (not in git)
+├── memory.json       Your personal memory — auto-created, not in git
+├── .env              Your API keys — never committed to git
+├── .env.example      Copy this to .env and fill in your keys
+└── requirements.txt
+```
+
+---
+
+## Roadmap
+
+- [x] Step 1: Text command → AI → structured intent (Groq only)
+- [x] Step 2: Voice input (Whisper STT) + voice output (Piper TTS)
+- [x] Step 3: 3-tier AI router (Groq → Gemini → DeepSeek)
+- [x] Step 4: Real skills — alarm via Windows Task Scheduler
+- [x] Step 5: Always-listening wake word + system tray
+- [x] Step 6: Dashboard — live status + command history
+- [x] Step 7: Persistent memory — preferences + conversation history
+- [ ] More skills: open app, send email, get directions
+- [ ] Auto-start with Windows on boot
+- [ ] Mobile version (Flutter)
+
+---
+
+## Known issues
+
+- **ffmpeg PATH issue** — after `winget install ffmpeg`, close and reopen
+  PowerShell (or reboot) before running Atlas. Verify with `ffmpeg -version`.
+  Whisper cannot decode audio without ffmpeg on the PATH.
